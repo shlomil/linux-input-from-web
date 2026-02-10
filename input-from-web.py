@@ -13,7 +13,7 @@ import qrcode
 
 app = Flask(__name__)
 TOKEN = secrets.token_urlsafe(32)
-AUTO_PASTE = True
+METHOD = "clipboard"  # "clipboard" or "type"
 
 HTML = """\
 <!DOCTYPE html>
@@ -87,19 +87,19 @@ def get_lan_ip():
 
 
 def inject_text(text):
-    """Copy text to Wayland clipboard, then optionally simulate Ctrl+V."""
-    subprocess.run(
-        ["wl-copy", "-o", "--", text],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
-        timeout=5,
-    )
-    if AUTO_PASTE:
-        time.sleep(0.1)
+    """Inject text using the chosen method."""
+    if METHOD == "type":
         subprocess.run(
-            ["ydotool", "key", "--delay", "100", "ctrl+v"],
+            ["ydotool", "type", "--key-delay", "0", "--", text],
+            check=True,
+            timeout=30,
+        )
+    else:
+        subprocess.run(
+            ["wl-copy", "-o", "--", text],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             check=True,
             timeout=5,
         )
@@ -129,12 +129,13 @@ def send():
 
 
 def main():
-    global AUTO_PASTE
+    global METHOD
     parser = argparse.ArgumentParser(description="Type on your phone, paste on your desktop.")
-    parser.add_argument("--no-paste", action="store_true",
-                        help="Clipboard only — skip auto Ctrl+V")
+    parser.add_argument("--method", choices=["clipboard", "type"], default="clipboard",
+                        help="clipboard: wl-copy only, you paste manually (default). "
+                             "type: ydotool type, works everywhere including terminals.")
     args = parser.parse_args()
-    AUTO_PASTE = not args.no_paste
+    METHOD = args.method
 
     host = get_lan_ip()
     port = 5123
