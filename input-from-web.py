@@ -14,6 +14,7 @@ import qrcode
 
 app = Flask(__name__)
 TOKEN = secrets.token_urlsafe(32)
+USE_TOKEN = True
 METHOD = "type"
 PROFILE = {}
 
@@ -24,6 +25,20 @@ DEFAULT_CONFIG = {
         "input-from-web configuration file.",
         "",
         "default_profile: which profile to use when --profile is not specified.",
+        "",
+        "profiles.<name>.method:",
+        "  'type'      - ydotool type, simulates keystrokes (default).",
+        "  'clipboard' - wl-copy only, you paste manually.",
+        "  Can be overridden with --method on the command line.",
+        "",
+        "profiles.<name>.port:",
+        "  TCP port to listen on (default: 5123).",
+        "  Can be overridden with --port on the command line.",
+        "",
+        "profiles.<name>.use_security_token:",
+        "  true  - require a secret token in the URL (default, recommended).",
+        "  false - no token, anyone on the network can send input.",
+        "          WARNING: only disable on a trusted private network!",
         "",
         "profiles.<name>.voice_send:",
         "  enabled       - true/false to toggle voice command detection.",
@@ -39,6 +54,9 @@ DEFAULT_CONFIG = {
     "default_profile": "default",
     "profiles": {
         "default": {
+            "method": "type",
+            "port": 5123,
+            "use_security_token": True,
             "voice_send": {
                 "enabled": True,
                 "delay_seconds": 1.5,
@@ -263,18 +281,21 @@ def inject_text(text):
         )
 
 
+def check_token():
+    if USE_TOKEN and request.args.get("token") != TOKEN:
+        abort(403)
+
+
 @app.route("/")
 def index():
-    if request.args.get("token") != TOKEN:
-        abort(403)
+    check_token()
     profile_json = json.dumps(PROFILE, ensure_ascii=False)
     return HTML_TEMPLATE.replace("__CONFIG__", profile_json)
 
 
 @app.route("/send", methods=["POST"])
 def send():
-    if request.args.get("token") != TOKEN:
-        abort(403)
+    check_token()
     data = request.get_json(force=True)
     text = data.get("text", "")
     if not text:
@@ -288,21 +309,34 @@ def send():
 
 
 def main():
-    global METHOD, PROFILE
+    global METHOD, USE_TOKEN, PROFILE
     parser = argparse.ArgumentParser(description="Type on your phone, paste on your desktop.")
-    parser.add_argument("--method", choices=["clipboard", "type"], default="type",
-                        help="type: ydotool type, works everywhere including terminals (default). "
-                             "clipboard: wl-copy only, you paste manually.")
+    parser.add_argument("--method", choices=["clipboard", "type"], default=None,
+                        help="Override profile method. type: ydotool type. clipboard: wl-copy only.")
+    parser.add_argument("--port", type=int, default=None,
+                        help="Override profile port (default: 5123)")
     parser.add_argument("--profile", default=None,
                         help="Config profile name (default: from config file)")
     args = parser.parse_args()
-    METHOD = args.method
 
     PROFILE = load_or_create_config(args.profile)
 
+    # CLI flags override profile, profile overrides built-in defaults
+    METHOD = args.method or PROFILE.get("method", "type")
+    USE_TOKEN = PROFILE.get("use_security_token", True)
+
+    if not USE_TOKEN:
+        print("\n\033[1;97;41m  WARNING: security token is DISABLED  \033[0m")
+        print("\033[1;31m  Anyone on your network can send keystrokes to this machine!\033[0m")
+        print("\033[1;31m  Only run this way on a trusted private network.\033[0m\n")
+
     host = get_lan_ip()
-    port = 5123
-    url = f"http://{host}:{port}/?token={TOKEN}"
+    port = args.port or PROFILE.get("port", 5123)
+
+    if USE_TOKEN:
+        url = f"http://{host}:{port}/?token={TOKEN}"
+    else:
+        url = f"http://{host}:{port}/"
 
     print(f"\n  URL: {url}\n")
 
