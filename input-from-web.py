@@ -8,6 +8,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import time
 
 from flask import Flask, request, abort
 import qrcode
@@ -16,6 +17,7 @@ app = Flask(__name__)
 TOKEN = secrets.token_urlsafe(32)
 USE_TOKEN = True
 METHOD = "type"
+AUTO_PASTE = False
 PROFILE = {}
 
 CONFIG_PATH = os.path.expanduser("~/.input-from-web-conf.json")
@@ -28,8 +30,13 @@ DEFAULT_CONFIG = {
         "",
         "profiles.<name>.method:",
         "  'type'      - ydotool type, simulates keystrokes (default).",
-        "  'clipboard' - wl-copy only, you paste manually.",
+        "  'clipboard' - wl-copy to clipboard, you paste manually.",
         "  Can be overridden with --method on the command line.",
+        "",
+        "profiles.<name>.auto_paste:",
+        "  true  - after wl-copy, simulate Ctrl+V via ydotool (clipboard method only).",
+        "  false - clipboard only, you paste manually (default).",
+        "  Ignored when method is 'type'. Useful for GUI apps, not terminals.",
         "",
         "profiles.<name>.port:",
         "  TCP port to listen on (default: 5123).",
@@ -55,6 +62,7 @@ DEFAULT_CONFIG = {
     "profiles": {
         "default": {
             "method": "type",
+            "auto_paste": False,
             "port": 5123,
             "use_security_token": True,
             "voice_send": {
@@ -279,6 +287,13 @@ def inject_text(text):
             check=True,
             timeout=5,
         )
+        if AUTO_PASTE:
+            time.sleep(0.1)
+            subprocess.run(
+                ["ydotool", "key", "--delay", "100", "ctrl+v"],
+                check=True,
+                timeout=5,
+            )
 
 
 def check_token():
@@ -323,6 +338,7 @@ def main():
 
     # CLI flags override profile, profile overrides built-in defaults
     METHOD = args.method or PROFILE.get("method", "type")
+    AUTO_PASTE = PROFILE.get("auto_paste", False)
     USE_TOKEN = PROFILE.get("use_security_token", True)
 
     if not USE_TOKEN:

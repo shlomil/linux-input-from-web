@@ -103,6 +103,7 @@ a `default` profile. You can add more profiles and switch between them.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `method` | `"type"` or `"clipboard"` | `"type"` | Input injection method. Overridden by `--method` |
+| `auto_paste` | boolean | `false` | After clipboard copy, simulate Ctrl+V via ydotool. Only applies to `clipboard` method. Useful for GUI apps, not terminals |
 | `port` | integer | `5123` | TCP port. Overridden by `--port` |
 | `use_security_token` | boolean | `true` | Require secret token in URL. **Only disable on trusted networks** |
 | `voice_send` | object | (see below) | Voice command auto-trigger settings |
