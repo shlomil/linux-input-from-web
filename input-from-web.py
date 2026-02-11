@@ -10,9 +10,10 @@ import subprocess
 import sys
 import time
 
-from flask import Flask, request, abort
+from flask import Flask, Response, request, abort, send_from_directory
 import qrcode
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 TOKEN = secrets.token_urlsafe(32)
 USE_TOKEN = True
@@ -124,6 +125,12 @@ HTML_TEMPLATE = r"""
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1a1a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 <title>Input</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -330,6 +337,10 @@ function showStatus(msg) {
   statusEl.textContent = msg;
   if (msg) setTimeout(() => { statusEl.textContent = ""; }, 2000);
 }
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js");
+}
 </script>
 </body>
 </html>
@@ -377,12 +388,36 @@ def check_token():
         abort(403)
 
 
+@app.route("/manifest.json")
+def manifest():
+    return {
+        "name": "Input from Web",
+        "short_name": "Input",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#1a1a1a",
+        "theme_color": "#1a1a1a",
+        "icons": [{"src": "/icon.png", "sizes": "512x512", "type": "image/png"}],
+    }
+
+
+@app.route("/icon.png")
+def icon():
+    return send_from_directory(SCRIPT_DIR, "icon.png", mimetype="image/png")
+
+
+@app.route("/sw.js")
+def service_worker():
+    return Response(
+        'self.addEventListener("fetch", e => e.respondWith(fetch(e.request)));',
+        mimetype="application/javascript",
+    )
+
+
 @app.route("/")
 def index():
-    # In permanent-link mode, serve the page without token so the clean QR works.
-    # The client will load the token from localStorage for API calls.
-    if not PERMANENT_LINK:
-        check_token()
+    # Page is always served — token security is on POST /send.
+    # Client gets token from URL query (first visit) or localStorage (PWA / bookmark).
     profile_json = json.dumps(PROFILE, ensure_ascii=False)
     return HTML_TEMPLATE.replace("__CONFIG__", profile_json)
 
