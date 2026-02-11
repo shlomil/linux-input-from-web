@@ -83,6 +83,8 @@ dpkg-buildpackage -us -uc -b
 | `--method clipboard` | Copy to clipboard via wl-copy, you paste manually |
 | `--port PORT` | TCP port to listen on (default: 5123) |
 | `--profile NAME` | Use a named profile from the config file |
+| `--permanent-link` | Reuse a stored token across sessions (see below) |
+| `--permanent-link-refresh` | Replace the stored permanent token with a new one |
 
 ### Examples
 
@@ -171,6 +173,68 @@ Default substitutions:
   }
 }
 ```
+
+## Permanent link
+
+By default, a new random token is generated each time the server starts, meaning
+you need to re-scan the QR code every session. With `--permanent-link`, the token
+is saved to the config file and reused across restarts.
+
+### First-time setup
+
+```bash
+./run.sh --permanent-link
+```
+
+On first run, the QR code includes the token. Scan it with your phone — the
+token is saved to your browser's localStorage. From now on, the phone remembers
+the token automatically.
+
+### Subsequent runs
+
+```bash
+./run.sh --permanent-link
+```
+
+The QR code now shows a clean URL (no token) — shorter and bookmarkable. Your
+phone loads the token from localStorage. The setup URL with the token is still
+printed in the terminal in case you need it on a new device.
+
+### Refreshing the token
+
+```bash
+./run.sh --permanent-link-refresh
+```
+
+Replaces the stored token with a new one. The QR code includes the new token
+so you can scan it again. Use this if you suspect the token has been compromised.
+
+## Add to Home Screen (PWA)
+
+The app includes a web app manifest, so you can install it on your phone's home
+screen for quicker access.
+
+### Android (Chrome)
+
+1. Open the link from the QR code in Chrome
+2. Tap the **three-dot menu** (top right)
+3. Tap **"Add to Home screen"** or **"Install app"**
+4. Launch from the home screen icon
+
+### iOS (Safari)
+
+1. Open the link from the QR code in Safari
+2. Tap the **Share** button (bottom center)
+3. Tap **"Add to Home Screen"**
+4. Launch from the home screen icon
+
+### Notes
+
+- The token is stored in your browser's localStorage, so the installed app
+  continues to work across server restarts when using `--permanent-link`.
+- Chrome requires HTTPS for full standalone PWA mode (no address bar). On a
+  plain HTTP LAN setup, the app will work but may show a minimal browser bar.
+  This does not affect functionality.
 
 ## Security
 
