@@ -116,7 +116,7 @@ HTML_TEMPLATE = r"""\
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <title>Input</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
