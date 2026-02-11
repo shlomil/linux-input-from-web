@@ -16,6 +16,7 @@ import qrcode
 app = Flask(__name__)
 TOKEN = secrets.token_urlsafe(32)
 USE_TOKEN = True
+PERMANENT_LINK = False
 METHOD = "type"
 AUTO_PASTE = False
 PROFILE = {}
@@ -88,7 +89,7 @@ DEFAULT_CONFIG = {
 
 
 def load_or_create_config(profile_name=None):
-    """Load config from disk, creating default if missing. Return the active profile."""
+    """Load config from disk, creating default if missing. Return (profile, profile_name, full_config)."""
     if not os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "w") as f:
             json.dump(DEFAULT_CONFIG, f, indent=2, ensure_ascii=False)
@@ -108,7 +109,13 @@ def load_or_create_config(profile_name=None):
         sys.exit(1)
 
     print(f"  Profile: {profile_name}")
-    return profiles[profile_name]
+    return profiles[profile_name], profile_name, config
+
+
+def save_config(config):
+    """Write config back to disk."""
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
 
 
 HTML_TEMPLATE = r"""
@@ -154,7 +161,15 @@ textarea:focus{outline:none;border-color:#2563eb}
 </div>
 <script>
 const CONFIG = __CONFIG__;
-const token = new URLSearchParams(location.search).get("token");
+
+/* --- Token: URL query > localStorage > null --- */
+const STORAGE_KEY = "input-from-web-token";
+let token = new URLSearchParams(location.search).get("token");
+if (token) {
+  localStorage.setItem(STORAGE_KEY, token);
+} else {
+  token = localStorage.getItem(STORAGE_KEY);
+}
 
 const txt = document.getElementById("txt");
 const btn = document.getElementById("btn");
@@ -364,7 +379,10 @@ def check_token():
 
 @app.route("/")
 def index():
-    check_token()
+    # In permanent-link mode, serve the page without token so the clean QR works.
+    # The client will load the token from localStorage for API calls.
+    if not PERMANENT_LINK:
+        check_token()
     profile_json = json.dumps(PROFILE, ensure_ascii=False)
     return HTML_TEMPLATE.replace("__CONFIG__", profile_json)
 
@@ -385,7 +403,7 @@ def send():
 
 
 def main():
-    global METHOD, USE_TOKEN, PROFILE
+    global METHOD, USE_TOKEN, PERMANENT_LINK, AUTO_PASTE, TOKEN, PROFILE
     parser = argparse.ArgumentParser(description="Type on your phone, paste on your desktop.")
     parser.add_argument("--method", choices=["clipboard", "type"], default=None,
                         help="Override profile method. type: ydotool type. clipboard: wl-copy only.")
@@ -393,14 +411,38 @@ def main():
                         help="Override profile port (default: 5123)")
     parser.add_argument("--profile", default=None,
                         help="Config profile name (default: from config file)")
+    parser.add_argument("--permanent-link", action="store_true",
+                        help="Reuse a stored token across sessions. "
+                             "QR shows a clean URL; phone remembers the token.")
+    parser.add_argument("--permanent-link-refresh", action="store_true",
+                        help="Replace the stored permanent token with a new one. "
+                             "Implies --permanent-link.")
     args = parser.parse_args()
 
-    PROFILE = load_or_create_config(args.profile)
+    PROFILE, profile_name, full_config = load_or_create_config(args.profile)
 
     # CLI flags override profile, profile overrides built-in defaults
     METHOD = args.method or PROFILE.get("method", "type")
     AUTO_PASTE = PROFILE.get("auto_paste", False)
     USE_TOKEN = PROFILE.get("use_security_token", True)
+    PERMANENT_LINK = args.permanent_link or args.permanent_link_refresh
+
+    # Permanent link: reuse or generate+store a token in the config
+    permanent_is_new = False
+    if PERMANENT_LINK and USE_TOKEN:
+        stored = PROFILE.get("permanent_token")
+        if args.permanent_link_refresh and stored:
+            print("  Replacing permanent token with a new one.")
+            stored = None
+        if stored:
+            TOKEN = stored
+            print("  Using permanent token from config.")
+        else:
+            permanent_is_new = True
+            PROFILE["permanent_token"] = TOKEN
+            full_config["profiles"][profile_name] = PROFILE
+            save_config(full_config)
+            print("  Generated and saved permanent token to config.")
 
     if not USE_TOKEN:
         print("\n\033[1;97;41m  WARNING: security token is DISABLED  \033[0m")
@@ -410,15 +452,26 @@ def main():
     host = get_lan_ip()
     port = args.port or PROFILE.get("port", 5123)
 
-    if USE_TOKEN:
-        url = f"http://{host}:{port}/?token={TOKEN}"
-    else:
-        url = f"http://{host}:{port}/"
+    base_url = f"http://{host}:{port}/"
+    token_url = f"{base_url}?token={TOKEN}" if USE_TOKEN else base_url
 
-    print(f"\n  URL: {url}\n")
+    if PERMANENT_LINK and USE_TOKEN:
+        if permanent_is_new:
+            # First setup or refresh: QR includes token so phone can save it
+            qr_url = token_url
+            print(f"\n  First-time setup (scan QR): {token_url}")
+            print(f"  Bookmark URL (next time):   {base_url}\n")
+        else:
+            # Reusing stored token: QR is clean, phone already has token
+            qr_url = base_url
+            print(f"\n  QR URL (bookmark): {base_url}")
+            print(f"  Setup URL:         {token_url}\n")
+    else:
+        qr_url = token_url
+        print(f"\n  URL: {token_url}\n")
 
     qr = qrcode.QRCode(box_size=1, border=1)
-    qr.add_data(url)
+    qr.add_data(qr_url)
     qr.make(fit=True)
     qr.print_ascii(invert=True)
     print()
