@@ -111,7 +111,7 @@ def load_or_create_config(profile_name=None):
     return profiles[profile_name]
 
 
-HTML_TEMPLATE = r"""\
+HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -130,7 +130,13 @@ html,body{height:100%;font-family:system-ui,sans-serif;background:#1a1a1a;color:
 #clear-btn:active{background:#b91c1c}
 textarea{flex:1;width:100%;padding:12px;font-size:1rem;background:#262626;color:#fff;border:1px solid #444;border-radius:8px;resize:none}
 textarea:focus{outline:none;border-color:#2563eb}
-.status{text-align:center;font-size:0.85rem;color:#888;min-height:1.2em;flex-shrink:0}
+.nav-row{display:flex;gap:8px;flex-shrink:0;align-items:center}
+.nav-btn{width:56px;padding:16px;font-size:1.2rem;font-weight:bold;background:#444;color:#fff;border:none;border-radius:8px;cursor:pointer;flex-shrink:0}
+.nav-btn:active:not(:disabled){background:#666}
+.nav-btn:disabled{background:#2a2a2a;color:#555;cursor:default}
+.nav-mid{flex:1;text-align:center}
+.nav-info{font-size:0.8rem;color:#666}
+.status{font-size:0.85rem;color:#888}
 </style>
 </head>
 <body>
@@ -140,7 +146,11 @@ textarea:focus{outline:none;border-color:#2563eb}
   <button id="clear-btn">X</button>
 </div>
 <textarea id="txt" placeholder="Type here..." autofocus></textarea>
-<div class="status" id="status"></div>
+<div class="nav-row">
+  <button class="nav-btn" id="nav-left" disabled>&lt;</button>
+  <div class="nav-mid"><div class="nav-info" id="nav-info"></div><div class="status" id="status"></div></div>
+  <button class="nav-btn" id="nav-right" disabled>&gt;</button>
+</div>
 </div>
 <script>
 const CONFIG = __CONFIG__;
@@ -150,9 +160,56 @@ const txt = document.getElementById("txt");
 const btn = document.getElementById("btn");
 const clearBtn = document.getElementById("clear-btn");
 const statusEl = document.getElementById("status");
+const navLeft = document.getElementById("nav-left");
+const navRight = document.getElementById("nav-right");
+const navInfo = document.getElementById("nav-info");
 
 btn.addEventListener("click", doSend);
 clearBtn.addEventListener("click", clearText);
+navLeft.addEventListener("click", histBack);
+navRight.addEventListener("click", histForward);
+
+/* --- History ---
+ * history[] holds sent messages. The user always edits a "draft" buffer.
+ * histIdx points to the currently viewed entry:
+ *   histIdx === history.length  =>  draft buffer (empty unsent)
+ *   histIdx < history.length    =>  viewing a past message
+ * Sending from a past entry: if text differs from original, a new entry
+ * is appended; if identical, it still appends a new entry (re-send).
+ */
+const history = [];
+let histIdx = 0;
+let draft = "";
+
+function updateNav() {
+  navLeft.disabled = (histIdx === 0 && history.length === 0) || histIdx === 0;
+  navRight.disabled = histIdx >= history.length;
+  if (history.length > 0) {
+    const pos = histIdx < history.length ? histIdx + 1 : history.length + 1;
+    navInfo.textContent = pos + " / " + (history.length + 1);
+  } else {
+    navInfo.textContent = "";
+  }
+}
+
+function histBack() {
+  if (histIdx <= 0) return;
+  if (histIdx === history.length) draft = txt.value;
+  histIdx--;
+  txt.value = history[histIdx];
+  txt.focus();
+  updateNav();
+}
+
+function histForward() {
+  if (histIdx >= history.length) return;
+  histIdx++;
+  txt.value = histIdx < history.length ? history[histIdx] : draft;
+  txt.focus();
+  updateNav();
+}
+
+updateNav();
 
 /* --- Substitutions --- */
 function escapeRegex(s) {
@@ -237,7 +294,11 @@ async function doSend() {
       body: JSON.stringify({text: text})
     });
     if (res.ok) {
+      history.push(text);
+      histIdx = history.length;
+      draft = "";
       txt.value = "";
+      updateNav();
       showStatus("Sent!");
       txt.focus();
     } else {
