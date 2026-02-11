@@ -10,11 +10,23 @@ import subprocess
 import sys
 import time
 
+import logging
+
 from flask import Flask, Response, request, abort, send_from_directory
 import qrcode
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
+
+# Suppress Werkzeug request log for /ping
+_werkzeug_log = logging.getLogger("werkzeug")
+_orig_log_request = _werkzeug_log.handle
+
+class _PingFilter(logging.Filter):
+    def filter(self, record):
+        return "/ping" not in record.getMessage()
+
+_werkzeug_log.addFilter(_PingFilter())
 TOKEN = secrets.token_urlsafe(32)
 USE_TOKEN = True
 PERMANENT_LINK = False
@@ -151,6 +163,7 @@ textarea:focus{outline:none;border-color:#2563eb}
 .nav-mid{flex:1;text-align:center}
 .nav-info{font-size:0.8rem;color:#666}
 .status{font-size:0.85rem;color:#888}
+.ping{display:inline-block;width:10px;height:10px;border-radius:50%;background:#555;vertical-align:middle;margin-left:6px}
 </style>
 </head>
 <body>
@@ -162,7 +175,7 @@ textarea:focus{outline:none;border-color:#2563eb}
 <textarea id="txt" placeholder="Type here..." autofocus></textarea>
 <div class="nav-row">
   <button class="nav-btn" id="nav-left" disabled>&lt;</button>
-  <div class="nav-mid"><div class="nav-info" id="nav-info"></div><div class="status" id="status"></div></div>
+  <div class="nav-mid"><div class="nav-info" id="nav-info"></div><div class="status" id="status"></div><span class="ping" id="ping"></span></div>
   <button class="nav-btn" id="nav-right" disabled>&gt;</button>
 </div>
 </div>
@@ -338,6 +351,17 @@ function showStatus(msg) {
   if (msg) setTimeout(() => { statusEl.textContent = ""; }, 2000);
 }
 
+/* --- Ping --- */
+const pingEl = document.getElementById("ping");
+setInterval(async () => {
+  try {
+    const r = await fetch("/ping", {signal: AbortSignal.timeout(3000)});
+    pingEl.style.background = r.ok ? "#22c55e" : "#ef4444";
+  } catch(e) {
+    pingEl.style.background = "#ef4444";
+  }
+}, 1000);
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js");
 }
@@ -386,6 +410,11 @@ def inject_text(text):
 def check_token():
     if USE_TOKEN and request.args.get("token") != TOKEN:
         abort(403)
+
+
+@app.route("/ping")
+def ping():
+    return {"ok": True}
 
 
 @app.route("/manifest.json")
