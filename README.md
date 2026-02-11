@@ -238,13 +238,19 @@ screen for quicker access.
 
 ## Security
 
-By default, each session generates a random 32-character token embedded in the URL.
-Only someone who scans the QR code or copies the URL from your terminal can access
-the page.
+**This tool is designed for use on a trusted home/private network only.**
 
-Setting `use_security_token` to `false` removes this protection. A red warning is
-printed at startup. Only do this on a network you fully trust — anyone on the same
-network could send keystrokes to your machine.
+The server runs over plain HTTP (not HTTPS). This means all traffic — including
+the security token — is transmitted unencrypted. Anyone on the same network
+could intercept the token by sniffing traffic and then send arbitrary keystrokes
+to your machine.
+
+The token provides basic protection against casual unauthorized access, but it
+is **not** a substitute for network-level security. Do not run this tool on
+public or untrusted networks (coffee shops, hotels, shared offices, etc.).
+
+Setting `use_security_token` to `false` removes even this basic protection.
+A red warning is printed at startup. Only do this on a network you fully control.
 
 ## Requirements
 
